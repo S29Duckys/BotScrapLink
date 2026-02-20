@@ -57,18 +57,6 @@ URL_SITE=https://anime-sama.tv/catalogue/
 poetry install
 ```
 
-#### Avec pip
-
-```bash
-pip install -r requirements.txt
-```
-
-Ou installez manuellement :
-
-```bash
-pip install "dotenv>=0.9.9,<0.10.0" "requests>=2.32.5,<3.0.0"
-```
-
 ## Utilisation
 
 ### Lancer le script
