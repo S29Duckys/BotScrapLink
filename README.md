@@ -65,12 +65,6 @@ poetry install
 poetry run scraper
 ```
 
-Ou directement avec Python :
-
-```bash
-python -m bot.scraper
-```
-
 ### Commandes disponibles
 
 - **Entrer un nom d'anime** : Saisissez le nom pour le scraper
