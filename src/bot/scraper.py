@@ -50,6 +50,7 @@ def verif_saisons(url):
 
 def URL_construct():
     tab = recup_animes()
+    tab_verif = []
 
     for element in tab:
         if element == "/" or element == "!" or element =="":
@@ -57,7 +58,9 @@ def URL_construct():
         else:
             url_transform = f"{url}{element}"
             print(url_transform)
-            tab_verif = verif_saisons(url_transform)
+            verif = verif_saisons(url_transform)
+            tab_verif.extend(verif)
+
     return tab_verif       
     
 def recup_liens(url):
