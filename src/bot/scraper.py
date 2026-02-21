@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-url = os.getenv("URL_SITE")
+url = os.getenv("URL_SITE_CATALOGUE")
 
 
 def recup_animes():

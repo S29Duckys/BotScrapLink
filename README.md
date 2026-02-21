@@ -46,7 +46,7 @@ cp .exempl.env .env
 Puis modifiez le fichier `.env` avec votre URL cible :
 
 ```
-URL_SITE=https://anime-sama.tv/catalogue/
+URL_SITE_CATALOGUE=https://anime-sama.tv/catalogue/
 ```
 
 ### Étape 3 : Installer les dépendances
