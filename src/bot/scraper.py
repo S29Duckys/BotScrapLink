@@ -1,83 +1,242 @@
 import os
+import re
+import json
 import requests
+import yt_dlp
 from dotenv import load_dotenv
 
 load_dotenv()
 
-url = os.getenv("URL_SITE_CATALOGUE")
+BASE_URL = os.getenv("URL_SITE_CATALOGUE")
+session = requests.Session()
+session.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+})
 
+LANGUAGES = ["vf", "vostfr", "vo"]
+SUPPORTED_PLAYERS = ["sibnet", "vidmoly", "sendvid", "anime-sama"]
 
-def recup_animes():
-    tab_animes = []
-    i = 0
-    
-    while i <= 50:
-        input_anime = input("Entrez un animé : ")
-        tab_animes.append(input_anime)
-        
-        if input_anime == "/":
+def build_urls_from_catalogue(catalogue_file="catalogue.json"):
+    episodes_urls = {}
+
+    with open(catalogue_file, "r", encoding="utf-8") as f:
+        catalogue = json.load(f)
+
+    print(f"  {len(catalogue)} animés trouvés dans le catalogue")
+
+    for slug, nom in catalogue.items():
+        anime_url = f"{BASE_URL}{slug}"
+        print(f"\nProcessing : {nom} ({anime_url})")
+        result = check_seasons(anime_url)
+        if result:
+            episodes_urls[slug] = result
+        else:
+            print(f"  ✗ No valid content for : {nom}")
+
+    return episodes_urls
+
+def get_animes():
+    anime_list = []
+    print("/ to stop, ! to display the list")
+
+    while True:
+        anime_input = input("Anime > ").strip()
+
+        if anime_input == "/":
             break
+        elif anime_input == "!":
+            print(anime_list)
+        elif anime_input == "":
+            print("Ignored")
+        else:
+            anime_list.append(anime_input)
 
-        elif input_anime == "!":
-            print(tab_animes)
-
-        i += 1
-    print(tab_animes)
-    return tab_animes
+    print(f"List : {anime_list}")
+    return anime_list
 
 
-def verif_saisons(url):
-    tab_verif = []
+def detect_player(url):
+    for player in SUPPORTED_PLAYERS:
+        if player in url:
+            return player
+    return "unknown"
+
+
+def check_link(url):
+    try:
+        response = session.head(url, timeout=(3, 5), allow_redirects=True)
+        if response.status_code == 200:
+            return True
+        response = session.get(url, timeout=(3, 5))
+        return response.status_code == 200
+    except requests.exceptions.RequestException:
+        return False
+
+
+def parse_episodes_js(content):
+    groups = {}
+    pattern_vars = r'var\s+(eps\w*)\s*=\s*\['
+    variables = re.findall(pattern_vars, content)
+
+    for var in variables:
+        pattern_links = rf'var\s+{var}\s*=\s*\[(.*?)\];'
+        match = re.search(pattern_links, content, re.DOTALL)
+        if match:
+            block = match.group(1)
+            links = re.findall(r"'(https?://[^']+)'", block)
+            if links:
+                groups[var] = links
+
+    return groups
+
+
+def find_best_group(groups):
+    for group_name, links in groups.items():
+        print(f"    Testing group {group_name} ({detect_player(links[0])})...")
+        all_valid = True
+
+        for link in links:
+            if not check_link(link):
+                print(f"    ✗ Dead link : {link}")
+                all_valid = False
+                break
+
+        if all_valid:
+            print(f"    ✓ Group {group_name} fully valid")
+            return {
+                "player": detect_player(links[0]),
+                "group": group_name,
+                "episodes": links
+            }
+        else:
+            print(f"    ✗ Group {group_name} incomplete, moving to next")
+
+    return None
+
+
+def check_content(content):
+    if not content or len(content) < 20:
+        return False
+    keywords = ["http", "sibnet", "sendvid", "mp4", "m3u8", "embed"]
+    return any(keyword in content for keyword in keywords)
+
+
+def check_seasons(url):
+    results = {"vf": [], "vostfr": [], "vo": []}
+    print(f"\nChecking seasons for : {url}")
 
     for i in range(1, 100):
-        try:
-            url_saisons = f"{url}/saison{i}/vostfr/episodes.js"
-            response = requests.head(url_saisons, timeout=(3, 5))
+        season_found = False
 
-            print(response.status_code)
+        for language in LANGUAGES:
+            try:
+                url_season = f"{url}/saison{i}/{language}/episodes.js"
+                response = session.get(url_season, timeout=(3, 5))
 
-            if response.status_code == 200:
-                print(url_saisons)
-                tab_verif.append(url_saisons)
-            else:
-                break
-        
-        except requests.Timeout:
-            print("La requête a expiré.")
+                if response.status_code == 200 and check_content(response.text):
+                    print(f"  ✓ Season {i} [{language}] found")
 
-    return tab_verif
+                    groups = parse_episodes_js(response.text)
+                    best = find_best_group(groups)
+
+                    if best:
+                        results[language].append({
+                            "season": i,
+                            "player": best["player"],
+                            "episodes": best["episodes"]
+                        })
+                        season_found = True
+                    else:
+                        print(f"  ✗ No working player for season {i} [{language}]")
+
+            except requests.exceptions.RequestException as e:
+                print(f"  Error : {e}")
+
+        if not season_found:
+            print(f"  Stopping at season {i}")
+            break
+
+    return {language: data for language, data in results.items() if data}
 
 
-def URL_construct():
-    tab = recup_animes()
-    tab_verif = []
+def build_urls():
+    anime_list = get_animes()
+    episodes_urls = {}
 
-    for element in tab:
-        if element == "/" or element == "!" or element =="":
-            pass
+    for anime in anime_list:
+        anime_url = f"{BASE_URL}{anime}"
+        print(f"\nProcessing : {anime_url}")
+        result = check_seasons(anime_url)
+        if result:
+            episodes_urls[anime] = result
         else:
-            url_transform = f"{url}{element}"
-            print(url_transform)
-            verif = verif_saisons(url_transform)
-            tab_verif.extend(verif)
+            print(f"  ✗ No valid content for : {anime}")
 
-    return tab_verif       
-    
-def recup_liens(url):
-    print("----------------------------------")
-    for element in url:
-        try:
-            response = requests.get(element, timeout=(3, 5))
-            print(response.text)
-        except requests.Timeout:
-            print("La requête a expiré.")
+    return episodes_urls
+
+
+def export_json(episodes_urls, filename="results.json"):
+    with open(filename, "w", encoding="utf-8") as f:
+        json.dump(episodes_urls, f, ensure_ascii=False, indent=4)
+    print(f"\n✓ Exported to {filename}")
+
+
+def download_from_json(filename="results.json"):
+    with open(filename, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    for anime, languages in data.items():
+        for language, seasons in languages.items():
+            for season_data in seasons:
+                season_num = season_data["season"]
+                player = season_data["player"]
+                episodes = season_data["episodes"]
+
+                # Folder : downloads/anime-name/season1/
+                folder = os.path.join("downloads", anime, f"season{season_num}")
+                os.makedirs(folder, exist_ok=True)
+
+                print(f"\nDownloading : {anime} | Season {season_num} | {language.upper()} | {player}")
+
+                options = {
+                    "format": "best",
+                    "outtmpl": os.path.join(folder, "%(title)s.%(ext)s"),
+                    "http_headers": {
+                        "Referer": f"https://{player}.ru" if player != "anime-sama" else "https://anime-sama.fr",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    }
+                }
+
+                with yt_dlp.YoutubeDL(options) as ydl:
+                    for url in episodes:
+                        try:
+                            ydl.download([url])
+                            print(f"  ✓ Downloaded : {url}")
+                        except Exception as e:
+                            print(f"  ✗ Error : {url} → {e}")
+
+
 
 def main():
-    url = URL_construct()
-    recup_liens(url)
+    print("═" * 50)
+    print("  STEP 1 : Scraping links")
+    print("═" * 50)
+    episodes_urls = build_urls_from_catalogue()
 
-    
+    if not episodes_urls:
+        print("\nNo episodes found.")
+        return
+
+    print("\n" + "═" * 50)
+    print("  STEP 2 : JSON Export")
+    print("═" * 50)
+    export_json(episodes_urls)
+
+    print("\n" + "═" * 50)
+    print("  STEP 3 : Download")
+    print("═" * 50)
+    download_from_json()
 
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     main()
