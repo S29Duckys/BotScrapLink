@@ -10,12 +10,13 @@ requires-python = ">=3.13"
 dependencies = [
     "dotenv (>=0.9.9,<0.10.0)",
     "requests (>=2.32.5,<3.0.0)",
-    "bs4 (>=0.0.2,<0.0.3)"
+    "bs4 (>=0.0.2,<0.0.3)",
+    "yt-dlp (>=2026.2.4,<2027.0.0)"
 ]
 
 [tool.poetry.scripts]
-scraperLink = "bot.scraper:main"
-scraperInfo = "bot.scrap_info_anime:main"
+scraper = "bot.scraper:main"
+catalogue = "bot.catalogue:main"
 
 
 [tool.poetry]
